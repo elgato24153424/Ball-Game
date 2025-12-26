@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Ball Game</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a1a 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    
+    #gameContainer {
+      position: relative;
+      border: 4px solid #333;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 
+        0 0 50px rgba(255, 0, 0, 0.3),
+        0 0 100px rgba(0, 0, 255, 0.3),
+        inset 0 0 50px rgba(255, 255, 255, 0.1);
+    }
+    
+    #gameCanvas {
+      display: block;
+    }
+    
+    .mobile-controls {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      padding: 0 20px;
+      gap: 20px;
+    }
+    
+    .control-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .control-row {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    
+    .mobile-btn {
+      width: 70px;
+      height: 70px;
+      border-radius: 20px;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.1s;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .mobile-btn::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 60%;
+      height: 60%;
+      background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 70%);
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+    }
+    
+    .mobile-btn:active {
+      transform: scale(0.9);
+    }
+    
+    .blue-controls .mobile-btn {
+      background: linear-gradient(135deg, #1a5fff 0%, #0033cc 100%);
+      box-shadow: 
+        0 4px 15px rgba(0, 100, 255, 0.5),
+        inset 0 2px 10px rgba(255, 255, 255, 0.3);
+      border: 3px solid #0044ff;
+    }
+    
+    .red-controls .mobile-btn {
+      background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+      box-shadow: 
+        0 4px 15px rgba(255, 0, 0, 0.5),
+        inset 0 2px 10px rgba(255, 255, 255, 0.3);
+      border: 3px solid #ff0000;
+    }
+    
+    @media (max-width: 768px) {
+      .mobile-controls {
+        display: flex;
+      }
+      #gameContainer {
+        width: 95vw;
+        height: 60vh;
+      }
+    }
+    
+    @media (min-width: 769px) {
+      #gameContainer {
+        width: 900px;
+        height: 600px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  
+  <div class="mobile-controls">
+    <div class="control-group blue-controls">
+      <div class="control-row">
+        <button class="mobile-btn" id="blue-left">◀</button>
+        <button class="mobile-btn" id="blue-right">▶</button>
+      </div>
+      <button class="mobile-btn" id="blue-jump">▲</button>
+    </div>
+    <div class="control-group red-controls">
+      <div class="control-row">
+        <button class="mobile-btn" id="red-left">◀</button>
+        <button class="mobile-btn" id="red-right">▶</button>
+      </div>
+      <button class="mobile-btn" id="red-jump">▲</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    function resizeCanvas() {
+      const container = document.getElementById('gameContainer');
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    const gravity = 0.6;
+    const friction = 0.92;
+    const jumpForce = -15;
+    const moveSpeed = 0.8;
+    const maxSpeed = 8;
+    
+    class Ball {
+      constructor(x, y, color, glowColor, controls) {
+        this.x = x;
+        this.y = y;
+        this.radius = 25;
+        this.vx = 0;
+        this.vy = 0;
+        this.color = color;
+        this.glowColor = glowColor;
+        this.controls = controls;
+        this.isJumping = false;
+        this.trail = [];
+        this.pulsePhase = 0;
+      }
+      
+      update(keys, mobileControls) {
+        this.pulsePhase += 0.1;
+        
+        let leftPressed = false;
+        let rightPressed = false;
+        let jumpPressed = false;
+        
+        if (isMobile) {
+          leftPressed = mobileControls[this.controls.left];
+          rightPressed = mobileControls[this.controls.right];
+          jumpPressed = mobileControls[this.controls.jump];
+        } else {
+          leftPressed = keys[this.controls.left];
+          rightPressed = keys[this.controls.right];
+          jumpPressed = keys[this.controls.jump];
+        }
+        
+        if (leftPressed) this.vx -= moveSpeed;
+        if (rightPressed) this.vx += moveSpeed;
+        
+        this.vx *= friction;
+        this.vx = Math.max(-maxSpeed, Math.min(maxSpeed, this.vx));
+        
+        this.x += this.vx;
+        this.vy += gravity;
+        this.y += this.vy;
+        
+        if (jumpPressed && !this.isJumping) {
+          this.vy = jumpForce;
+          this.isJumping = true;
+        }
+        
+        const floorY = canvas.height - 50;
+        if (this.y + this.radius > floorY) {
+          this.y = floorY - this.radius;
+          this.vy = 0;
+          this.isJumping = false;
+        }
+        
+        if (this.x - this.radius < 0) {
+          this.x = this.radius;
+          this.vx = 0;
+        }
+        if (this.x + this.radius > canvas.width) {
+          this.x = canvas.width - this.radius;
+          this.vx = 0;
+        }
+        
+        this.trail.push({ x: this.x, y: this.y });
+        if (this.trail.length > 15) this.trail.shift();
+      }
+      
+      draw() {
+        const pulse = Math.sin(this.pulsePhase) * 0.2 + 1;
+        
+        for (let i = 0; i < this.trail.length; i++) {
+          const t = this.trail[i];
+          const alpha = i / this.trail.length * 0.3;
+          const size = this.radius * (i / this.trail.length) * pulse;
+          
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, size, 0, Math.PI * 2);
+          ctx.fillStyle = this.color.replace('1)', `${alpha})`);
+          ctx.fill();
+        }
+        
+        const gradient = ctx.createRadialGradient(
+          this.x - 8, this.y - 8, 0,
+          this.x, this.y, this.radius * pulse
+        );
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(0.3, this.color);
+        gradient.addColorStop(1, this.glowColor);
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius * pulse, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.shadowColor = this.glowColor;
+        ctx.shadowBlur = 30;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        ctx.beginPath();
+        ctx.arc(this.x - 8, this.y - 8, 8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.fill();
+      }
+    }
+    
+    const redBall = new Ball(100, 300, 'rgba(255, 50, 50, 1)', 'rgba(255, 0, 0, 0.5)', {
+      left: isMobile ? 'red-left' : 'ArrowLeft',
+      right: isMobile ? 'red-right' : 'ArrowRight',
+      jump: isMobile ? 'red-jump' : 'ArrowUp'
+    });
+    
+    const blueBall = new Ball(200, 300, 'rgba(50, 50, 255, 1)', 'rgba(0, 0, 255, 0.5)', {
+      left: isMobile ? 'blue-left' : 'a',
+      right: isMobile ? 'blue-right' : 'd',
+      jump: isMobile ? 'blue-jump' : 'w'
+    });
+    
+    const keys = {};
+    const mobileControls = {
+      'red-left': false,
+      'red-right': false,
+      'red-jump': false,
+      'blue-left': false,
+      'blue-right': false,
+      'blue-jump': false
+    };
+    
+    document.addEventListener('keydown', (e) => {
+      keys[e.key] = true;
+    });
+    
+    document.addEventListener('keyup', (e) => {
+      keys[e.key] = false;
+    });
+    
+    function setupMobileButton(id, controlKey) {
+      const btn = document.getElementById(id);
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        mobileControls[controlKey] = true;
+      });
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        mobileControls[controlKey] = false;
+      });
+      btn.addEventListener('mousedown', () => mobileControls[controlKey] = true);
+      btn.addEventListener('mouseup', () => mobileControls[controlKey] = false);
+      btn.addEventListener('mouseleave', () => mobileControls[controlKey] = false);
+    }
+    
+    setupMobileButton('red-left', 'red-left');
+    setupMobileButton('red-right', 'red-right');
+    setupMobileButton('red-jump', 'red-jump');
+    setupMobileButton('blue-left', 'blue-left');
+    setupMobileButton('blue-right', 'blue-right');
+    setupMobileButton('blue-jump', 'blue-jump');
+    
+    let particleTime = 0;
+    
+    function drawBackground() {
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, '#0a0a1a');
+      gradient.addColorStop(0.5, '#151530');
+      gradient.addColorStop(1, '#0a0a1a');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      for (let i = 0; i < 50; i++) {
+        const x = (Math.sin(i * 132.1 + particleTime * 0.001) * 0.5 + 0.5) * canvas.width;
+        const y = (Math.cos(i * 453.2 + particleTime * 0.001) * 0.5 + 0.5) * canvas.height;
+        const size = Math.sin(particleTime * 0.003 + i) * 1 + 2;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(100, 150, 255, ${Math.sin(particleTime * 0.002 + i) * 0.3 + 0.3})`;
+        ctx.fill();
+      }
+      
+      ctx.strokeStyle = 'rgba(100, 100, 200, 0.3)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < canvas.width; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, canvas.height);
+        ctx.stroke();
+      }
+      for (let i = 0; i < canvas.height; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(canvas.width, i);
+        ctx.stroke();
+      }
+    }
+    
+    function drawGrass() {
+      const floorY = canvas.height - 50;
+      
+      const gradient = ctx.createLinearGradient(0, floorY, 0, canvas.height);
+      gradient.addColorStop(0, '#aa2222');
+      gradient.addColorStop(0.5, '#881111');
+      gradient.addColorStop(1, '#660000');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, floorY, canvas.width, 50);
+      
+      for (let x = 0; x < canvas.width; x += 15) {
+        const height = 15 + Math.sin(x * 0.1 + particleTime * 0.01) * 5;
+        
+        ctx.beginPath();
+        ctx.moveTo(x, floorY);
+        ctx.quadraticCurveTo(x + 5, floorY - height, x + 10, floorY);
+        ctx.fillStyle = `hsl(${(x + particleTime * 0.5) % 60 + 340}, 70%, 40%)`;
+        ctx.fill();
+      }
+      
+      ctx.shadowColor = 'rgba(255, 50, 50, 0.5)';
+      ctx.shadowBlur = 20;
+      ctx.strokeStyle = 'rgba(255, 100, 100, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, floorY);
+      ctx.lineTo(canvas.width, floorY);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    
+    function drawWalls() {
+      ctx.shadowColor = 'rgba(100, 100, 255, 0.5)';
+      ctx.shadowBlur = 15;
+      
+      const wallGradient = ctx.createLinearGradient(0, 0, 20, 0);
+      wallGradient.addColorStop(0, '#202060');
+      wallGradient.addColorStop(1, '#151540');
+      ctx.fillStyle = wallGradient;
+      ctx.fillRect(0, 0, 20, canvas.height - 50);
+      
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(20, canvas.height - 50);
+      ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      ctx.fillRect(canvas.width - 20, 0, 20, canvas.height - 50);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width - 20, 0);
+      ctx.lineTo(canvas.width - 20, canvas.height - 50);
+      ctx.stroke();
+      
+      ctx.shadowBlur = 0;
+    }
+    
+    function gameLoop(timestamp) {
+      particleTime = timestamp;
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      drawBackground();
+      drawWalls();
+      drawGrass();
+      
+      redBall.update(keys, mobileControls);
+      blueBall.update(keys, mobileControls);
+      
+      redBall.draw();
+      blueBall.draw();
+      
+      requestAnimationFrame(gameLoop);
+    }
+    
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
